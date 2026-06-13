@@ -55,3 +55,26 @@ The bot will:
 - `optimize_safe.py`: The safety-first parameter sweep optimizer.
 - `verify_oos.py`: The out-of-sample dynamic verification engine.
 - `optimize_tweak.py`: The final minor parameter tweaking sweep.
+
+---
+
+## 📊 Backtesting & Verification Results
+
+To verify the strategy's robustness and ensure it was not overfit, we conducted both **In-Sample (IS)** and **Out-of-Sample (OOS)** backtests under realistic conditions (including 0.05% slippage, $0.002/share commission fee, next-bar Open execution, and 90% position sizing allocation).
+
+### Performance Metrics
+
+| Dataset | Period | Strategy Return | Benchmark Return (B&H) | Strategy Max DD | Benchmark Max DD | Strategy Sharpe | Benchmark Sharpe | Total Trades |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Out-of-Sample (OOS)** | May 1, 2025 – Dec 15, 2025 | **+23.00%** | +77.42% | **10.39%** | 24.86% | **1.76** | 1.98 | 25 |
+| **In-Sample (IS)** | Dec 15, 2025 – Jun 12, 2026 | **+48.80%** | +120.95% | **6.48%** | 25.13% | **2.99** | 3.01 | 17 |
+
+*Note: While Buy & Hold captured more total return due to AMD's massive macro trend, it exposed the portfolio to steep drawdowns (~25%). The EMA Crossover strategy successfully protected capital, keeping drawdowns extremely safe at **6.48% (IS)** and **10.39% (OOS)** with highly stable Sharpe ratios.*
+
+### Equity Curves
+
+#### In-Sample (IS) Equity Curve
+![In-Sample Verification Curve](AMD_IS_curve.png)
+
+#### Out-of-Sample (OOS) Equity Curve
+![Out-of-Sample Verification Curve](AMD_OOS_curve.png)

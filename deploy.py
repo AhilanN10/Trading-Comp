@@ -8,10 +8,9 @@ from datetime import datetime
 import math
 
 # --- Configuration ---
-SYMBOL = 'ARBK'
-TIMEFRAME = '1Min'
-WINDOW = 5
-TRAILING_STOP_PCT = 0.10
+SYMBOL = 'AMD'
+TIMEFRAME = '30Min'
+POSITION_SIZE_PCT = 0.90
 STATE_FILE = 'bot_state.json'
 
 # --- Alpaca Connection ---
@@ -37,81 +36,114 @@ def save_state(state):
         json.dump(state, f)
 
 def fetch_data(symbol):
-    # Fetch enough data for rolling window
-    # We need at least WINDOW + some buffer. Let's get 20 bars.
-    # Note: Alpaca get_bars returns historical data. For live, we want the most recent completed bars.
-    # We'll use 'limit' to get the last N bars.
+    """
+    Fetches the last 400 30-minute bars of history to ensure stable calculations
+    for EMAs (8/25) and Macro EMA (250).
+    """
     try:
-        bars = api.get_bars(symbol, TIMEFRAME, limit=20).df
+        bars = api.get_bars(symbol, TIMEFRAME, limit=400).df
         if bars.empty:
             return None
+        # Clean column names to lowercase
+        bars.columns = [col.lower() for col in bars.columns]
         return bars
     except Exception as e:
         print(f"Error fetching data: {e}")
         return None
 
 def calculate_indicators(df):
-    df['avg_low'] = df['low'].rolling(window=WINDOW).mean()
-    df['avg_high'] = df['high'].rolling(window=WINDOW).mean()
+    """
+    Calculates 8-period Fast EMA, 25-period Slow EMA, 250-period Macro EMA, and 14-period Wilder's RSI.
+    """
+    df['ema_fast'] = df['close'].ewm(span=8, adjust=False).mean()
+    df['ema_slow'] = df['close'].ewm(span=25, adjust=False).mean()
+    df['ema_macro'] = df['close'].ewm(span=250, adjust=False).mean()
+    
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).copy()
+    loss = (-delta.where(delta < 0, 0)).copy()
+    
+    avg_gain = gain.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/14, min_periods=14, adjust=False).mean()
+    
+    rs = avg_gain / avg_loss
+    df['rsi'] = 100 - (100 / (1 + rs))
     return df
 
 def run_bot():
     print(f"--- Starting Live Bot for {SYMBOL} ---")
-    print(f"Strategy: Mean Reversion (Window={WINDOW})")
-    print(f"Safety: Trailing Stop {TRAILING_STOP_PCT*100}%")
+    print(f"Strategy: EMA Crossover Momentum (8/25) with 250 EMA Trend Filter & RSI < 65")
+    print(f"Safety: No Trailing Stop (Crossover Exit) | Size: {POSITION_SIZE_PCT*100}%")
     
     state = load_state()
     
     while True:
         try:
-            # 1. Sync / Wait (Simple sleep for now, ideally sync to minute boundary)
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Checking market...")
             
-            # 2. Get Data
+            # Get Data
             df = fetch_data(SYMBOL)
-            if df is None or len(df) < WINDOW:
-                print("Not enough data yet.")
-                time.sleep(60)
+            if df is None or len(df) < 250:
+                print("Not enough data yet (need at least 250 bars).")
+                time.sleep(30)
                 continue
                 
             df = calculate_indicators(df)
-            current_bar = df.iloc[-1]
             
-            # Note: In live trading, the 'current' bar is constantly updating. 
-            # Ideally we trade on the CLOSE of the previous bar or real-time price.
-            # For this strategy (Mean Reversion), we often want to buy THE DIP as it happens.
-            # So we will use the LATEST trade price against the calculated averages from completed bars.
-            # However, get_bars usually returns completed bars.
-            # Let's use the latest completed bar's averages, and compare with REAL-TIME price.
+            # Extract latest completed and previous bars to check crossovers
+            current_bar = df.iloc[-1]
+            prev_bar = df.iloc[-2]
+            
+            fast_curr = current_bar['ema_fast']
+            slow_curr = current_bar['ema_slow']
+            macro_curr = current_bar['ema_macro']
+            rsi_curr = current_bar['rsi']
+            
+            fast_prev = prev_bar['ema_fast']
+            slow_prev = prev_bar['ema_slow']
+            
+            # Guard against NaNs
+            if pd.isna(fast_curr) or pd.isna(slow_curr) or pd.isna(macro_curr) or pd.isna(rsi_curr):
+                print(f"Indicators not ready yet (Fast: {fast_curr}, Slow: {slow_curr}, Macro: {macro_curr}, RSI: {rsi_curr}).")
+                time.sleep(30)
+                continue
             
             latest_trade = api.get_latest_trade(SYMBOL)
             current_price = latest_trade.price
             
-            avg_low = current_bar['avg_low']
-            avg_high = current_bar['avg_high']
+            print(f"Price: ${current_price:.2f} | Fast EMA: ${fast_curr:.2f} | Slow EMA: ${slow_curr:.2f} | Macro: ${macro_curr:.2f} | RSI: {rsi_curr:.1f}")
             
-            print(f"Price: ${current_price:.4f} | Avg Low: ${avg_low:.4f} | Avg High: ${avg_high:.4f}")
-            
-            # 3. Check Position
+            # Check Position
             position = get_position(SYMBOL)
             
             if position is None:
                 # --- NO POSITION: Look for BUY ---
-                # Reset state if we are flat
+                # Reset state if flat
                 if state['max_price_since_entry'] > 0:
                     state['max_price_since_entry'] = 0.0
                     save_state(state)
                 
-                if current_price < avg_low:
-                    print(f"SIGNAL: BUY (Price {current_price} < Avg Low {avg_low})")
+                # BUY Conditions:
+                # 1. Bullish crossover (8 crosses above 25)
+                # 2. Price > 250 EMA
+                # 3. RSI < 65
+                crossover_buy = fast_prev <= slow_prev and fast_curr > slow_curr
+                trend_ok = current_price > macro_curr
+                rsi_ok = rsi_curr < 65.0
+                
+                if crossover_buy:
+                    print(f"Crossover signal detected. Checking filters -> Trend OK: {trend_ok}, RSI OK: {rsi_ok}")
                     
-                    # Calculate Size (95% of Buying Power)
+                if crossover_buy and trend_ok and rsi_ok:
+                    print(f"SIGNAL: BUY (EMA crossover, Trend Bullish, RSI oversold/moderate)")
+                    
+                    # Calculate Size (90% of Buying Power) using fractional shares rounded to 4 decimals
                     account = get_account()
                     buying_power = float(account.buying_power)
-                    target_amt = buying_power * 0.95
-                    qty = int(target_amt / current_price)
+                    target_amt = buying_power * POSITION_SIZE_PCT
+                    qty = round(target_amt / current_price, 4)
                     
-                    if qty > 0:
+                    if qty > 0.0:
                         print(f"Submitting BUY order for {qty} shares...")
                         api.submit_order(
                             symbol=SYMBOL,
@@ -120,45 +152,24 @@ def run_bot():
                             type='market',
                             time_in_force='day'
                         )
-                        # Initialize State
                         state['max_price_since_entry'] = current_price
                         save_state(state)
                         print("Order Submitted.")
                     else:
                         print("Insufficient funds to buy.")
+                else:
+                    print("No buy signal: conditions not met.")
             
             else:
                 # --- HAVE POSITION: Look for SELL ---
-                qty = int(position.qty)
+                qty = float(position.qty)
                 entry_price = float(position.avg_entry_price)
                 
-                # Update Trailing Stop State
-                if current_price > state['max_price_since_entry']:
-                    state['max_price_since_entry'] = current_price
-                    save_state(state)
-                    print(f"New Max Price: ${current_price:.4f}")
+                print(f"Position: {qty} shares @ ${entry_price:.2f}")
                 
-                max_price = state['max_price_since_entry']
-                stop_price = max_price * (1 - TRAILING_STOP_PCT)
-                
-                print(f"Position: {qty} shares @ ${entry_price:.4f} | Max: ${max_price:.4f} | Stop: ${stop_price:.4f}")
-                
-                # Check Conditions
-                sell_signal = False
-                reason = ""
-                
-                # 1. Take Profit / Mean Reversion Exit
-                if current_price >= avg_high:
-                    sell_signal = True
-                    reason = f"Target Reached (Price {current_price} >= Avg High {avg_high})"
-                    
-                # 2. Trailing Stop
-                elif current_price < stop_price:
-                    sell_signal = True
-                    reason = f"Trailing Stop Hit (Price {current_price} < Stop {stop_price})"
-                    
-                if sell_signal:
-                    print(f"SIGNAL: SELL - {reason}")
+                # Check exit condition: Bearish crossover (8 crosses below 25)
+                if fast_prev >= slow_prev and fast_curr < slow_curr:
+                    print(f"SIGNAL: SELL (Bearish Crossover: Fast EMA {fast_curr:.2f} < Slow EMA {slow_curr:.2f})")
                     print(f"Submitting SELL order for {qty} shares...")
                     api.submit_order(
                         symbol=SYMBOL,
@@ -167,19 +178,19 @@ def run_bot():
                         type='market',
                         time_in_force='day'
                     )
-                    # Reset State
                     state['max_price_since_entry'] = 0.0
                     save_state(state)
                     print("Order Submitted.")
+                else:
+                    print("Holding position.")
             
-            # Sleep for 1 minute (simple loop)
-            # For production, use a scheduler or websocket for real-time updates
-            print("Waiting for next check...")
-            time.sleep(60)
+            # Sleep for 30 seconds
+            print("Waiting 30 seconds for next check...")
+            time.sleep(30)
             
         except Exception as e:
             print(f"CRITICAL ERROR: {e}")
-            time.sleep(60)
+            time.sleep(30)
 
 if __name__ == "__main__":
     run_bot()

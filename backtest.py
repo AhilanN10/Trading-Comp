@@ -267,6 +267,38 @@ def strategy_rsi_reversal(row, position, cash, price, entry_price=0.0, **kwargs)
             
     return None
 
+def strategy_scalping(row, position, cash, price, entry_price=0.0, stop_loss_pct=0.005, take_profit_pct=0.01, rsi_buy_threshold=30, rsi_sell_threshold=70, **kwargs):
+    """
+    Scalping Strategy:
+    - Buy: RSI < Buy Threshold
+    - Sell: RSI > Sell Threshold OR Take Profit OR Stop Loss
+    """
+    rsi = row.get('rsi', 50)
+    
+    if pd.isna(rsi):
+        return None
+        
+    if position == 0:
+        if rsi < rsi_buy_threshold:
+            return 'buy'
+            
+    elif position > 0:
+        # Check Stop Loss
+        if stop_loss_pct is not None and entry_price > 0:
+            if price < entry_price * (1 - stop_loss_pct):
+                return 'sell'
+        
+        # Check Take Profit
+        if take_profit_pct is not None and entry_price > 0:
+            if price > entry_price * (1 + take_profit_pct):
+                return 'sell'
+                
+        # RSI Exit
+        if rsi > rsi_sell_threshold:
+            return 'sell'
+            
+    return None
+
 def strategy_grid_scalping(row, position, cash, price, entry_price=0.0, **kwargs):
     # Hyper-Active Grid Scalping
     # Logic: Simulate capturing the spread multiple times within the minute based on High-Low range.
@@ -429,6 +461,16 @@ if __name__ == "__main__":
                     'index': data.index
                 }
                 
+            # The strategy_scalping function has a different signature and returns portfolio_values, trades directly.
+            # It's not designed to be passed to run_backtest in the same way as the other strategies.
+            # If you intend to run it, you would call it separately:
+            # scalping_values, scalping_trades = strategy_scalping(data)
+            # results_store["Scalping"] = {
+            #     'values': scalping_values,
+            #     'trades': scalping_trades,
+            #     'index': data.index
+            # }
+            
             summary_df = analyze_results(results_store)
             print("\nPerformance Summary:")
             print(summary_df.to_string(index=False))

@@ -2,3 +2,4 @@ alpaca-trade-api
 pandas
 numpy
 matplotlib
+yfinance

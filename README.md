@@ -1,11 +1,11 @@
-# High-Beta Mean Reversion Bot (Private)
+# EMA Crossover Momentum Trading Bot (Private)
 
-This is a private algorithmic trading bot optimized for **ARBK**.
+This is a private algorithmic trading bot optimized for **AMD**.
 
 ## 🚨 IMPORTANT: Security Warning
 - **NEVER** upload `config.py` to GitHub. It contains your real API keys.
-- I have already created a `.gitignore` file to prevent this, but always double-check.
-- If you ever accidentally upload your keys, **regenerate them immediately** on the Alpaca dashboard.
+- A `.gitignore` file is configured to prevent this, but always double-check.
+- If you ever accidentally expose your keys, **regenerate them immediately** on the Alpaca dashboard.
 
 ## 🚀 Quick Start (For You)
 
@@ -28,9 +28,13 @@ python3 alpaca_sim/deploy.py
 
 The bot will:
 1.  Connect to your Alpaca account.
-2.  Check the price of **ARBK** every minute.
-3.  **Buy** if Price < 5-min Average Low.
-4.  **Sell** if Price >= 5-min Average High OR if it drops 10% (Trailing Stop).
+2.  Check the price of **AMD** every 30 seconds.
+3.  **Buy** when:
+    - Fast EMA (8-period) crosses **above** Slow EMA (25-period) on 30-minute bars.
+    - Price is above the Macro Trend Filter (250-period EMA).
+    - Current RSI(14) is below 65 (preventing buying when overbought).
+4.  **Sell** when:
+    - Fast EMA (8-period) crosses **below** Slow EMA (25-period) on 30-minute bars.
 
 ### 3. Monitoring
 - The bot will print every action to the terminal.
@@ -39,12 +43,15 @@ The bot will:
 ---
 
 ## Strategy Details
-- **Asset**: ARBK (High Volatility Crypto Miner)
-- **Logic**: Mean Reversion (Buy the Dip, Sell the Rip)
-- **Safety**: 10% Trailing Stop Loss
-- **Performance (Simulated)**: ~1,500% Average Weekly Return (Paper Trading Results)
+- **Asset**: AMD (Advanced Micro Devices)
+- **Logic**: EMA Crossover Momentum (8/25 Golden Cross to buy, Death Cross to sell)
+- **Filters**: Macro Trend Filter (250 EMA) & Volatility Filter (RSI < 65)
+- **Safety**: Capital protection via trend-only trading (No Trailing Stop)
+- **Position Sizing**: 90% of available buying power per trade
 
 ## Files
-- `deploy.py`: The main bot script.
-- `backtest.py`: The simulation engine.
-- `verify_arbk_10_weeks.py`: The script used to verify the strategy.
+- `deploy.py`: The main live execution bot.
+- `backtest_realistic.py`: The hyperrealistic simulation engine.
+- `optimize_safe.py`: The safety-first parameter sweep optimizer.
+- `verify_oos.py`: The out-of-sample dynamic verification engine.
+- `optimize_tweak.py`: The final minor parameter tweaking sweep.

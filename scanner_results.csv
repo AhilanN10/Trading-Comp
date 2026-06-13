@@ -1,0 +1,9 @@
+Ticker,Strategy,Total Return %,Sharpe Ratio,Max Drawdown %,Win Rate %,Total Trades,Avg Duration (min)
+TQQQ,VWAP Mean Reversion (Strategy B),+8.44%,4.553802901286116,6.06%,50.55%,91,208.7
+AMD,VWAP Mean Reversion (Strategy B),+6.97%,3.9101019559289787,4.57%,47.19%,89,224.2
+SOXL,VWAP Mean Reversion (Strategy B),+12.89%,2.94188968406509,14.07%,50.00%,88,86.8
+NVDA,VWAP Mean Reversion (Strategy B),+2.43%,2.0885036951909735,3.87%,41.67%,96,284.2
+TQQQ,Improved Mean Reversion (Strategy A),+3.41%,1.7970234450822793,4.04%,58.57%,70,269.4
+NVDA,Improved Mean Reversion (Strategy A),+1.07%,0.9014940674548713,3.39%,51.09%,92,121.4
+AMD,Improved Mean Reversion (Strategy A),-1.84%,-1.0201356697349442,4.18%,52.11%,71,47.1
+SOXL,Improved Mean Reversion (Strategy A),-7.91%,-2.105729916924783,11.39%,50.75%,67,19.2

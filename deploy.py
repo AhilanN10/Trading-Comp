@@ -4,7 +4,7 @@ import pandas as pd
 import time
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 
 # --- Configuration ---
@@ -41,11 +41,18 @@ def fetch_data(symbol):
     for EMAs (8/25) and Macro EMA (250).
     """
     try:
-        bars = api.get_bars(symbol, TIMEFRAME, limit=400, feed='iex').df
+        # Calculate start date (45 days ago) to get sufficient historical bars for EMA warmup
+        start_dt = datetime.now() - timedelta(days=45)
+        start_str = start_dt.strftime('%Y-%m-%d')
+        
+        bars = api.get_bars(symbol, TIMEFRAME, start=start_str, feed='iex').df
         if bars.empty:
             return None
         # Clean column names to lowercase
         bars.columns = [col.lower() for col in bars.columns]
+        # Keep only the last 400 bars
+        if len(bars) > 400:
+            bars = bars.tail(400)
         return bars
     except Exception as e:
         print(f"Error fetching data: {e}")

@@ -41,7 +41,7 @@ def fetch_data(symbol):
     for EMAs (8/25) and Macro EMA (250).
     """
     try:
-        bars = api.get_bars(symbol, TIMEFRAME, limit=400).df
+        bars = api.get_bars(symbol, TIMEFRAME, limit=400, feed='iex').df
         if bars.empty:
             return None
         # Clean column names to lowercase
